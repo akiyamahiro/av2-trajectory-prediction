@@ -1,0 +1,5 @@
+# Install a CUDA-capable PyTorch separately using the official installation selector.
+numpy>=1.24
+pandas>=2.0
+pyarrow>=12
+matplotlib>=3.7

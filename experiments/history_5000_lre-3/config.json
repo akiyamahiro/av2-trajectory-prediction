@@ -1,0 +1,42 @@
+{
+  "model": {
+    "d_model": 128,
+    "heads": 4,
+    "layers": 3,
+    "dropout": 0.1
+  },
+  "device": "cuda",
+  "batch_size": 64,
+  "overfit": 0,
+  "cache": "/home/user/YANG/00trajdff/data/processed/history_v1",
+  "metadata": {
+    "version": "history_v1",
+    "position_scale_m": 50.0,
+    "velocity_scale_mps": 20.0,
+    "dt_s": 0.1,
+    "features": [
+      "x/50",
+      "y/50",
+      "vx/20",
+      "vy/20",
+      "sin_relative_heading",
+      "cos_relative_heading"
+    ],
+    "representation": "direct_local_position",
+    "train_count": 5000,
+    "val_count": 100,
+    "seed": 42,
+    "val_source": "/home/user/YANG/00trajdff/splits/val_cv100.txt",
+    "cv_summary": {
+      "ADE": 5.405921182800085,
+      "FDE": 14.11104187561199,
+      "miss": 0.92
+    },
+    "fingerprint": "cbf5fc893b0662cd09b4bbc65c87547224dcfc17adb037c559f091a44638cb0e"
+  },
+  "seed": 42,
+  "workers": 0,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.0001,
+  "torch_version": "2.12.0+cu126"
+}

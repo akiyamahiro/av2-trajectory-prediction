@@ -1,0 +1,14 @@
+{
+  "N": 100,
+  "K": 1,
+  "unit": "m",
+  "checkpoint_epoch": 138,
+  "cache_fingerprint": "cbf5fc893b0662cd09b4bbc65c87547224dcfc17adb037c559f091a44638cb0e",
+  "overfit_diagnostic": false,
+  "ADE": 3.778807752132416,
+  "FDE": 9.481752296090127,
+  "miss": 0.95,
+  "CV_ADE": 5.405921216178686,
+  "CV_FDE": 14.111041921507567,
+  "CV_miss": 0.92
+}

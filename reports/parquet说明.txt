@@ -1,0 +1,137 @@
+本项目 Parquet 数据完整说明
+
+这里的 Parquet 文件保存的是 Argoverse 2 自动驾驶轨迹预测数据。可以把它理解为：记录一段交通场景里，车辆、行人等物体随时间如何运动的数值表。
+
+检查范围：实际读取了训练集、验证集和测试集各一个场景样例，以及两个测试标注文件，并核对官方数据说明。场景目录数量是本地统计；没有逐一检查全部场景文件的内容。
+
+一、文件分别保存什么
+
+data/raw/train/：199,908 个场景目录，用于训练的历史轨迹与真实未来轨迹。
+data/raw/val/：24,988 个场景目录，用于验证的历史轨迹与真实未来轨迹。
+data/raw/test/：24,984 个场景目录，用于预测的历史轨迹。
+data/raw/av2_mf_focal_test_annotations.parquet：24,984 行，每个测试场景中主要预测目标的真实未来轨迹。
+data/raw/av2_mf_multi_test_annotations.parquet：97,799 行，测试场景中多个评测目标的真实未来轨迹，包含主要目标。
+
+场景目录通常按下面的方式配对：
+
+场景ID/
+  scenario_场景ID.parquet       物体随时间变化的轨迹
+  log_map_archive_场景ID.json   对应的道路地图
+
+检查的地图 JSON 包含车道、车道边界、车道连接关系、可行驶区域和人行横道。两份文件结合起来，就能知道“物体怎么移动”以及“它周围的道路是什么样”。
+
+二、普通场景 Parquet 中，一行代表什么
+
+一行 = 一个物体在一个时间步的状态。
+一个物体的多行数据按时间排列，就组成它的轨迹。
+
+抽查文件共有 16 个字段：
+
+track_id：字符串；物体的轨迹编号，用来关联同一物体。
+object_type：字符串；物体类型，例如车辆、行人、骑行者。
+object_category：int64；轨迹质量及评测角色。
+timestep：int64；时间步编号。
+observed：布尔值；是否属于供模型观察的历史部分。
+position_x、position_y：float64；地图坐标系中的二维位置，单位米。
+heading：float64；朝向角，单位弧度。
+velocity_x、velocity_y：float64；两个方向的速度，单位米/秒。
+scenario_id：字符串；场景编号。
+focal_track_id：字符串；该场景主要预测目标的轨迹编号。
+start_timestamp、end_timestamp：float64；场景起止时间戳，表示纳秒时间。
+num_timestamps：int64；场景完整时间步数量。
+city：字符串；采集城市。
+
+object_type 和 object_category 是两回事：前者表示“是什么物体”，后者表示“这条轨迹在任务里承担什么角色”。
+
+object_category 的官方编码：
+0：轨迹片段，可能只出现少量时间步。
+1：作为环境上下文，不参与评分。
+2：多目标预测任务中参与评分的轨迹。
+3：场景的主要预测目标。
+
+实际样例：
+data/raw/train/75007793-0527-4c12-887c-e5c42b448e08/scenario_75007793-0527-4c12-887c-e5c42b448e08.parquet
+
+这个文件有 3,492 行、84 条物体轨迹。主要目标是一辆车，它前几个时间步的位置约为：
+
+时间步    轨迹编号    x/米        y/米
+0         183909      1066.268    -679.059
+1         183909      1066.297    -678.978
+2         183909      1066.334    -678.875
+
+每条轨迹长度可以不同，所以文件行数不一定等于“物体数 × 时间步数”。
+
+三、历史轨迹与未来轨迹怎样区分
+
+官方场景长度为 11 秒，采样频率 10 Hz，对应 110 个时间步。
+
+本地抽查结果：
+timestep 0～49：历史 5 秒，observed=True。
+timestep 50～109：未来 6 秒，observed=False。
+
+训练集、验证集样例包含两部分；测试场景样例只包含 0～49 的历史数据，即使 num_timestamps 仍然写着 110。
+
+另外两个 annotations.parquet 保存测试集的未来答案。它们采用另一种表结构，每行是一条完整的目标未来轨迹：
+
+scenario_id：场景编号。
+track_id：目标轨迹编号。
+is_focal_track：是否为主要目标。
+gt_trajectory_x：未来 60 个 x 坐标，类型为浮点数列表。
+gt_trajectory_y：未来 60 个 y 坐标，类型为浮点数列表。
+
+检查了这两个文件的全部记录：每行的 x、y 列表都包含 60 个数，对应未来 6 秒；场景编号与本地测试目录完全对应。multi 文件包含 focal 文件中的全部目标键，即相同的 (scenario_id, track_id) 组合。
+
+官方说明这些测试答案是后来公开的，因此仍与测试输入分开存放。
+
+做预测时，输入使用历史轨迹和地图，预测结果再与这些真实未来坐标比较。
+
+四、为什么采用这样的保存方式
+
+Parquet 本身是一种带字段类型的二进制列式表格格式，适合大量数值数据的存储与读取。
+
+1. 节省空间。
+场景编号、城市、物体类型等值会重复出现，适合压缩和字典编码。抽查的文件使用了 Snappy 压缩；上面的训练样例约为 179 KB，转换成 CSV 后约为 785 KB。这是该样例的实测值，不代表所有文件的固定压缩比例。
+
+2. 可以只读取所需字段。
+比如只分析位置时，可以只读取 track_id、timestep、position_x、position_y。
+
+3. 保留数据类型。
+布尔值、整数、浮点数、字符串，以及标注文件中的坐标列表，都能直接表达。
+
+4. 适合长度不齐的轨迹。
+不同场景的物体数量、每个物体出现的时长都不同，用表格保存有效状态很自然。训练时再根据模型需要转换成张量、补齐长度和生成掩码。
+
+“每个场景一个 Parquet，搭配一个地图 JSON”的组织方式，便于按场景加载和并行处理；地图包含嵌套的几何与连接关系，用 JSON 表达也很直观。这种场景转表格再写入 Parquet 的方式，与官方序列化代码一致。
+
+五、怎样自己读取查看
+
+本机已有可用的 Python 环境：
+/home/user/anaconda3/envs/trajdff/bin/python
+
+使用该环境执行下面的 Python 代码，可以查看上述训练样例：
+
+import pandas as pd
+
+path = "data/raw/train/75007793-0527-4c12-887c-e5c42b448e08/scenario_75007793-0527-4c12-887c-e5c42b448e08.parquet"
+df = pd.read_parquet(path)
+print(df.head().to_string(index=False))
+print(df.dtypes)
+print("行数、列数：", df.shape)
+print("物体数：", df["track_id"].nunique())
+
+六、官方参考资料
+
+Argoverse 2 轨迹预测数据说明：
+https://argoverse.github.io/user-guide/tasks/motion_forecasting.html
+
+官方数据介绍及测试标注发布说明：
+https://www.argoverse.org/av2.html
+
+官方字段与轨迹分类定义：
+https://github.com/argoverse/av2-api/blob/main/src/av2/datasets/motion_forecasting/data_schema.py
+
+官方序列化代码：
+https://github.com/argoverse/av2-api/blob/main/src/av2/datasets/motion_forecasting/scenario_serialization.py
+
+Apache Parquet 格式说明：
+https://parquet.apache.org/docs/overview/
